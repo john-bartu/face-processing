@@ -4,6 +4,10 @@ import argparse
 import cv2
 import numpy as np
 from PIL import Image, ImageFilter, ImageOps
+from mtcnn.mtcnn import MTCNN
+
+detector = MTCNN()
+
 
 # to detect the eyes
 eyes = cv2.CascadeClassifier("eye2.xml")
@@ -31,7 +35,7 @@ def imageOpen(name):
 
 
 parser = argparse.ArgumentParser()
-parser.add_argument('--input_path', default='sample/sample3.png',
+parser.add_argument('--input_path', default='sample/sample5.png',
                     help="face face_image")
 parser.add_argument('--input_path_uv', default='sample/sample3-uv.png',
                     help="uv map created from face_image")
@@ -40,44 +44,25 @@ parser.add_argument('--out_dir', default='out/',
 opt = parser.parse_args()
 
 # define HSV color ranges for eyes colors
-class_name = ("Red", "Blue", "Blue Gray", "Brown", "Brown Gray",
-              "Brown Black", "Green", "Other")
+class_name = ("Blue", "Blue Gray", "Brown", "Brown Gray",
+              "Brown Black", "Green", "Green Gray" ,"Other")
 EyeColor = {
-    class_name[0]: ((0, 0, 0), (1, 1, 1)),
-    class_name[1]: ((156, 21, 50), (240, 100, 85)),
-    class_name[2]: ((156, 2, 25), (300, 20, 75)),
-    class_name[3]: ((2, 20, 20), (40, 100, 60)),
-    class_name[4]: ((20, 3, 30), (65, 60, 60)),
-    class_name[5]: ((0, 10, 5), (40, 40, 25)),
-    class_name[6]: ((60, 21, 50), (155, 100, 85))
+    class_name[0]: ((156, 21, 50), (240, 100, 85)),
+    class_name[1]: ((146, 2, 25), (300, 20, 75)),
+    class_name[2]: ((2, 20, 20), (40, 100, 60)),
+    class_name[3]: ((20, 3, 30), (65, 60, 60)),
+    class_name[4]: ((0, 10, 5), (40, 40, 25)),
+    class_name[5]: ((50, 21, 50), (155, 100, 85)),
+    class_name[6]: ((50, 2, 25), (145, 20, 65))
+    
 }
-
-EyeColor2 = {
-    class_name[0]: [[0, 0, 0], [1, 1, 1]],
-    class_name[1]: [[156, 21, 50], [240, 100, 85]],
-    class_name[2]: [[156, 2, 25], [300, 20, 75]],
-    class_name[3]: [[2, 20, 20], [40, 100, 60]],
-    class_name[4]: [[20, 3, 30], [65, 60, 60]],
-    class_name[5]: [[0, 10, 5], [40, 40, 25]],
-    class_name[6]: [[60, 21, 50], [155, 100, 85]]
-}
-
-
-def convert_hsv_to_percent(color):
-    cvH = color[0]
-    cvS = (color[1] * 255) / 100
-    cvV = (color[2] * 255) / 100
-    return cvH, cvS, cvV
 
 
 def check_color(hsv_input, color):
-    hsv = convert_hsv_to_percent(hsv_input)
-    # hsv = hsv_input
+    hsv = hsv_input
     if (hsv[0] >= color[0][0]) and (hsv[0] <= color[1][0]) and \
             (hsv[1] >= color[0][1]) and (hsv[1] <= color[1][1]) and \
             (hsv[2] >= color[0][2]) and (hsv[2] <= color[1][2]):
-
-        print(f"{hsv} in -> {color}")
         return True
     else:
         return False
@@ -88,74 +73,27 @@ def check_color(hsv_input, color):
 
 def find_class(hsv):
     color_id = 7
-    for i in range(len(class_name) - 1):
-        if check_color(hsv, EyeColor[class_name[i]]):
+    for i in range(len(class_name)-1):
+        if check_color(hsv, EyeColor[class_name[i]]) == True:
             color_id = i
-            return color_id
 
     return color_id
 
 
 def find_eye_position(face_image):
-    gray_frame = cv2.cvtColor(face_image, cv2.COLOR_BGR2GRAY)
+    imgHSV = cv2.cvtColor(image, cv2.COLOR_BGR2HSV)
+    h, w = image.shape[0:2]
+    imgMask = np.zeros((image.shape[0], image.shape[1], 1))
 
-    face = faces.detectMultiScale(gray_frame, 1.3, 5)
-
-    left_eye = (92, 62)
-    # right_eye = (169, 63)
-
-    index = 0
-    scalar = 6
-    # now getting into the face and its position
-    for (x, y, w, h) in face:
-
-        while index == 0:
-            print(f"x: {x}, {y}")
-            # drawing the rectangle on the face
-            cv2.rectangle(face_image, (x, y), (x + w, y + h),
-                          (0, 0, 255), thickness=4)
-
-            # now the eyes are on the face
-            # so we have to make the face frame gray
-            gray_face = gray_frame[y:y + h, x:x + w]
-
-            # make the color face also
-            color_face = face_image[y:y + h, x:x + w]
-
-            # check the eyes on this face
-            eye = eyes.detectMultiScale(gray_face, 1.3, scalar)
-
-            if len(eye) == 0:
-                raise Exception("The eye was NOT found!")
-
-            # get into the eyes with its position
-            for (a, b, c, d) in eye:
-                # we have to draw the rectangle on the
-                # coloured face
-                cv2.rectangle(face_image, (x + a, y + b), ((x + a + c), (y + b + d)),
-                              (0, 255, 0), thickness=4)
-
-                if index == 0:
-                    left_eye = (int(x + a + c / 2), int(y + b + d / 2) + 30)
-                # else:
-                # right_eye = (int(x+a + c/2), int(y+b + d/2)+20)
-
-                print(left_eye)
-                # print(right_eye)
-                print(f"--{a} {b} {a + c} {b + d}")
-
-                index += 1
-
-                # if(index == 2):
-                #     break
-
-            scalar -= 1
-
-        cv2.imwrite('sample/color_face.jpg', color_face)
-
-        return left_eye
-    else:
+    result = detector.detect_faces(image)
+    if result == []:
         raise Exception("The face was NOT found!")
+        return
+
+    bounding_box = result[0]['box']
+    left_eye = result[0]['keypoints']['left_eye']
+    right_eye = result[0]['keypoints']['right_eye']
+    return(left_eye)
 
 
 def eye_color(image):
@@ -183,7 +121,7 @@ def eye_color(image):
     eye_class = np.zeros(len(class_name), np.float)
 
 
-### version 1
+# version 1
     # kernal = np.ones((5, 5), "uint8")
 
     # for i in range(len(class_name) - 1):
@@ -213,20 +151,18 @@ def eye_color(image):
     #     cv2.imshow("Multiple Color Detection in Real-TIme", imgcopy)
     #     cv2.waitKey(0)
 
-
-    ### Version 2
+    # Version 2
     # clasify each pixel with mask where is eye
     firstpoint = 0
     for y in range(0, h):
         for x in range(0, w):
             if imgMask[y, x] != 0:
-                ## debug %12 point
-                if firstpoint % 12 == 0:
+                # debug %12 point
+                if firstpoint % 8 == 0:
                     print(
                         f"RGB{imgHSV[y, x]} - {class_name[find_class(imgHSV[y, x])]}")
                 firstpoint += 1
                 eye_class[find_class(imgHSV[y, x])] += 1
-
 
     cv2.imwrite('sample/hsv-eye.jpg', imgHSV)
     cv2.imwrite('sample/mask.jpg', imgMask)
@@ -239,7 +175,6 @@ def eye_color(image):
     print("\n **Eyes Color Percentage **")
     for i in range(len(class_name)):
         print(class_name[i], ": ", round(eye_class[i] / total_vote, 2))
-
 
     # open all images
     eyes_images = []
