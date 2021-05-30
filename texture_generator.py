@@ -45,7 +45,7 @@ opt = parser.parse_args()
 
 # define HSV color ranges for eyes colors
 class_name = ("Blue", "Blue Gray", "Brown", "Brown Gray",
-              "Brown Black", "Green", "Green Gray" ,"Other")
+              "Brown Black", "Green", "Green Gray", "Green Hazel" ,"Other")
 EyeColor = {
     class_name[0]: ((156, 21, 50), (240, 100, 85)),
     class_name[1]: ((146, 2, 25), (300, 20, 75)),
@@ -53,7 +53,8 @@ EyeColor = {
     class_name[3]: ((20, 3, 30), (65, 60, 60)),
     class_name[4]: ((0, 10, 5), (40, 40, 25)),
     class_name[5]: ((50, 21, 50), (155, 100, 85)),
-    class_name[6]: ((50, 2, 25), (145, 20, 65))
+    class_name[6]: ((50, 2, 25), (145, 20, 65)),
+    class_name[7]: ((20, 140, 50), (40, 200, 100)),
     
 }
 
@@ -72,7 +73,7 @@ def check_color(hsv_input, color):
 
 
 def find_class(hsv):
-    color_id = 7
+    color_id = len(class_name)-1
     for i in range(len(class_name)-1):
         if check_color(hsv, EyeColor[class_name[i]]) == True:
             color_id = i
