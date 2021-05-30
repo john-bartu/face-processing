@@ -407,7 +407,7 @@ def generate_skin_texture2(face_texture_path, uv_face_texture):
         img_alpha = Image.open('alpha.png').convert('L')
 
         img_face_color = img_face_color.crop((124, 54, 132, 60))
-        im_a_blur = img_face_color.filter(ImageFilter.GaussianBlur(40))
+        im_a_blur = img_face_color.filter(ImageFilter.GaussianBlur(60))
 
         # pobieram rozmiary
         bx, by = img_background.size
