@@ -3,6 +3,7 @@ import argparse
 
 import cv2
 import numpy as np
+import random
 from PIL import Image, ImageFilter, ImageOps
 from mtcnn.mtcnn import MTCNN
 
@@ -12,6 +13,34 @@ detector = MTCNN()
 # to detect the eyes
 eyes = cv2.CascadeClassifier("eye2.xml")
 faces = cv2.CascadeClassifier("face.xml")
+
+
+def reproduce_skin(image, size):
+    colors = []
+
+    for y in range(size[1]):
+        for x in range(size[0]):
+            if not np.array_equal(image[y][x], [0, 0, 0]):
+                colors.append(image[y][x])
+
+    for y in range(size[1]):
+        for x in range(size[0]):
+            if np.array_equal(image[y][x], [0, 0, 0]):
+                image[y][x] = colors[random.randrange(len(colors))]
+
+    return image
+
+
+def crop(img, startx, starty, cropx, cropy):
+    return img[starty:starty+cropy, startx:startx+cropx]
+
+
+def image_dominant_color(a):
+    a2D = a.reshape(-1, a.shape[-1])
+    a2D = np.delete(a2D, np.where(a2D == [0, 0, 0]), axis=0)
+    col_range = (256, 256, 256)
+    a1D = np.ravel_multi_index(a2D.T, col_range)
+    return np.unravel_index(np.bincount(a1D).argmax(), col_range)
 
 
 def average_colour(image):
@@ -35,7 +64,7 @@ def imageOpen(name):
 
 
 parser = argparse.ArgumentParser()
-parser.add_argument('--input_path', default='sample/sample5.png',
+parser.add_argument('--input_path', default='sample/sample3.png',
                     help="face face_image")
 parser.add_argument('--input_path_uv', default='sample/sample3-uv.png',
                     help="uv map created from face_image")
@@ -88,11 +117,11 @@ def find_class(hsv):
 
 
 def find_eye_position(face_image):
-    imgHSV = cv2.cvtColor(image, cv2.COLOR_BGR2HSV)
-    h, w = image.shape[0:2]
-    imgMask = np.zeros((image.shape[0], image.shape[1], 1))
+    imgHSV = cv2.cvtColor(face_image, cv2.COLOR_BGR2HSV)
+    h, w = face_image.shape[0:2]
+    imgMask = np.zeros((face_image.shape[0], face_image.shape[1], 1))
 
-    result = detector.detect_faces(image)
+    result = detector.detect_faces(face_image)
     if result == []:
         raise Exception("The face was NOT found!")
         return
@@ -127,8 +156,7 @@ def eye_color(image):
 
     eye_class = np.zeros(len(class_name), np.float)
 
-
-# version 1
+    # version 1
     # kernal = np.ones((5, 5), "uint8")
 
     # for i in range(len(class_name) - 1):
@@ -255,6 +283,114 @@ def generate_skin_texture(uv_face_texture):
     img_background.save(opt.out_dir + "head-final.png")
 
 
+def generate_skin_texture2(face_texture_path, uv_face_texture):
+
+    sourceImage = cv2.imread(face_texture_path, cv2.IMREAD_COLOR)
+
+    min_YCrCb = np.array([0, 133, 77], np.uint8)
+    max_YCrCb = np.array([255, 173, 127], np.uint8)
+
+    face_detection = []
+
+    face_detection = detector.detect_faces(sourceImage)
+
+    if len(face_detection) > 0:
+        face_box = face_detection[0]['box']
+        sourceImage = crop(
+            sourceImage, face_box[0], face_box[1], face_box[2], face_box[3])
+
+        h, w = sourceImage.shape[0:2]
+
+        skin_color_final = sourceImage
+
+        # Convert image to YCrCb
+        imageYCrCb = cv2.cvtColor(sourceImage, cv2.COLOR_BGR2YCR_CB)
+
+        # Find region with skin tone in YCrCb image
+        skinRegion = cv2.inRange(imageYCrCb, min_YCrCb, max_YCrCb)
+
+        skin_color_masked_ycrcb = cv2.bitwise_and(
+            imageYCrCb, imageYCrCb, mask=skinRegion)
+
+        avarege_color = np.array(image_dominant_color(skin_color_masked_ycrcb))
+
+        avarege_color_min = np.array(
+            avarege_color - avarege_color*0.08, np.uint8)
+        avarege_color_max = np.array(
+            avarege_color + avarege_color*0.08, np.uint8)
+
+        if avarege_color_max[0] < avarege_color_min[0]:
+            temp = avarege_color_max[0]
+            avarege_color_max[0] = avarege_color_min[0]
+            avarege_color_min[0] = temp
+
+        if avarege_color_max[1] < avarege_color_min[1]:
+            temp = avarege_color_max[1]
+            avarege_color_max[1] = avarege_color_min[1]
+            avarege_color_min[1] = temp
+
+        if avarege_color_max[2] < avarege_color_min[2]:
+            temp = avarege_color_max[2]
+            avarege_color_max[2] = avarege_color_min[2]
+            avarege_color_min[2] = temp
+
+        print(avarege_color)
+        print(avarege_color_min)
+        print(avarege_color_max)
+
+        skinRegionFix = cv2.inRange(
+            imageYCrCb, avarege_color_min, avarege_color_max)
+
+        final_mask = skinRegionFix
+        for y in range(h):
+            for x in range(w):
+                if(skinRegion[y][x] > 0 and skinRegionFix[y][x] > 0):
+                    final_mask[y][x] = skinRegion[y][x]
+                else:
+                    final_mask[y][x] = 0
+
+        skin_color_final = cv2.bitwise_and(
+            sourceImage, sourceImage, mask=final_mask)
+
+        cv2.imwrite('sample/skin-temp.png', reproduce_skin(
+            skin_color_final, (w, h)))
+
+        skin_reproduced = Image.open('sample/skin-temp.png')
+        skin_reproduced = skin_reproduced.filter(ImageFilter.GaussianBlur(12))
+
+        img_uv_face = uv_face_texture.copy()
+        img_background = skin_reproduced.copy()
+        img_background = img_background.resize((1024, 1024))
+
+        img_face_color = img_uv_face.copy()
+        img_alpha = Image.open('alpha.png').convert('L')
+
+        img_face_color = img_face_color.crop((124, 54, 132, 60))
+        im_a_blur = img_face_color.filter(ImageFilter.GaussianBlur(40))
+
+        # pobieram rozmiary
+        bx, by = img_background.size
+
+        ix, iy = img_uv_face.size
+        img_uv_face = img_uv_face.resize((int(ix * 1.6), int(iy * 1.6)))
+        ix, iy = img_uv_face.size
+
+        # wysrodkowywuje i podnosze obrazek
+        coordinate_x = int(bx / 2 - ix / 2)
+        coordinate_y = int(by / 2 - iy / 2 - 170)
+
+        img_alpha = img_alpha.resize(img_uv_face.size)
+
+        # wstawiam twarz w tło z maską
+        img_background.paste(
+            img_uv_face, (coordinate_x, coordinate_y), img_alpha)
+        # img_background = img_background.resize((bx*2, by*2))
+        img_background.save(opt.out_dir + "head-final.png")
+
+    else:
+        raise Exception("Face not found")
+
+
 if __name__ == '__main__':
     image = cv2.imread(opt.input_path, cv2.IMREAD_COLOR)
     eye_color(image)
@@ -263,5 +399,5 @@ if __name__ == '__main__':
     # twarz
     img_face_uv_input = Image.open(opt.input_path_uv)
 
-    generate_skin_texture(img_face_uv_input)
+    generate_skin_texture2(opt.input_path, img_face_uv_input)
     generate_hair_texture(img_face_uv_input)
