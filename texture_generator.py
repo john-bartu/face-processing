@@ -45,7 +45,7 @@ opt = parser.parse_args()
 
 # define HSV color ranges for eyes colors
 class_name = ("Blue", "Blue Gray", "Brown", "Brown Gray",
-              "Brown Black", "Green", "Green Gray", "Green Hazel" ,"Other")
+              "Brown Black", "Green", "Green Gray", "Green Hazel", "Other")
 EyeColor = {
     class_name[0]: ((156, 21, 50), (240, 100, 85)),
     class_name[1]: ((146, 2, 25), (300, 20, 75)),
@@ -54,8 +54,8 @@ EyeColor = {
     class_name[4]: ((0, 10, 5), (40, 40, 25)),
     class_name[5]: ((50, 21, 50), (155, 100, 85)),
     class_name[6]: ((50, 2, 25), (145, 20, 65)),
-    class_name[7]: ((20, 140, 50), (40, 200, 100)),
-    
+    class_name[7]: ((25, 20, 17), (60, 45, 55)),
+
 }
 
 
@@ -70,6 +70,12 @@ def check_color(hsv_input, color):
 
 
 # define eye color category rules in HSV space
+
+def convert_hsv_to_percent(color):
+    cvH = color[0]/180*360
+    cvS = (color[1] / 255) * 100
+    cvV = (color[2] / 255) * 100
+    return cvH, cvS, cvV
 
 
 def find_class(hsv):
@@ -159,11 +165,13 @@ def eye_color(image):
         for x in range(0, w):
             if imgMask[y, x] != 0:
                 # debug %12 point
+                converted_color = convert_hsv_to_percent(imgHSV[y, x])
                 if firstpoint % 8 == 0:
+
                     print(
-                        f"RGB{imgHSV[y, x]} - {class_name[find_class(imgHSV[y, x])]}")
+                        f"RGB{converted_color} - {class_name[find_class(converted_color)]}")
                 firstpoint += 1
-                eye_class[find_class(imgHSV[y, x])] += 1
+                eye_class[find_class(converted_color)] += 1
 
     cv2.imwrite('sample/hsv-eye.jpg', imgHSV)
     cv2.imwrite('sample/mask.jpg', imgMask)
