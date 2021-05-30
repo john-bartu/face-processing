@@ -40,7 +40,32 @@ def image_dominant_color(a):
     a2D = np.delete(a2D, np.where(a2D == [0, 0, 0]), axis=0)
     col_range = (256, 256, 256)
     a1D = np.ravel_multi_index(a2D.T, col_range)
-    return np.unravel_index(np.bincount(a1D).argmax(), col_range)
+
+    pixels = np.float32(a.reshape(-1, 3))
+
+    n_colors = 8
+    criteria = (cv2.TERM_CRITERIA_EPS + cv2.TERM_CRITERIA_MAX_ITER, 200, .1)
+    flags = cv2.KMEANS_RANDOM_CENTERS
+
+    _, labels, palette = cv2.kmeans(
+        pixels, n_colors, None, criteria, 10, flags)
+    _, counts = np.unique(labels, return_counts=True)
+
+    dic = dict()
+    for i in range(len(palette)):
+        dic[counts[i]] = palette[i]
+
+        np.sort(counts)
+    dominant = dic[counts[1]]
+
+    simple_array = []
+    for i in range(len(counts)):
+        color = dic[counts[i]]
+        if(color > 10).all():
+            simple_array.append(color)
+
+    # return np.unravel_index(np.bincount(a1D).argmax(), col_range)
+    return simple_array
 
 
 def average_colour(image):
@@ -64,9 +89,9 @@ def imageOpen(name):
 
 
 parser = argparse.ArgumentParser()
-parser.add_argument('--input_path', default='sample/sample3.png',
+parser.add_argument('--input_path', default='sample/sample2.png',
                     help="face face_image")
-parser.add_argument('--input_path_uv', default='sample/sample3-uv.png',
+parser.add_argument('--input_path_uv', default='sample/sample2-uv.png',
                     help="uv map created from face_image")
 parser.add_argument('--out_dir', default='out/',
                     help="output directory")
@@ -76,8 +101,8 @@ opt = parser.parse_args()
 class_name = ("Blue", "Blue Gray", "Brown", "Brown Gray",
               "Brown Black", "Green", "Green Gray", "Green Hazel", "Other")
 EyeColor = {
-    class_name[0]: ((156, 21, 50), (240, 100, 85)),
-    class_name[1]: ((146, 2, 25), (300, 20, 75)),
+    class_name[0]: ((156, 21, 50), (255, 100, 85)),
+    class_name[1]: ((146, 2, 10), (320, 20, 75)),
     class_name[2]: ((2, 20, 20), (40, 100, 60)),
     class_name[3]: ((20, 3, 30), (65, 60, 60)),
     class_name[4]: ((0, 10, 5), (40, 40, 25)),
@@ -283,6 +308,37 @@ def generate_skin_texture(uv_face_texture):
     img_background.save(opt.out_dir + "head-final.png")
 
 
+def mask_by_color(image, color):
+    avarege_color_min = np.array(
+        color - color*0.09, np.uint8)
+    avarege_color_max = np.array(
+        color + color*0.09, np.uint8)
+
+    if avarege_color_max[0] < avarege_color_min[0]:
+        temp = avarege_color_max[0]
+        avarege_color_max[0] = avarege_color_min[0]
+        avarege_color_min[0] = temp
+
+    if avarege_color_max[1] < avarege_color_min[1]:
+        temp = avarege_color_max[1]
+        avarege_color_max[1] = avarege_color_min[1]
+        avarege_color_min[1] = temp
+
+    if avarege_color_max[2] < avarege_color_min[2]:
+        temp = avarege_color_max[2]
+        avarege_color_max[2] = avarege_color_min[2]
+        avarege_color_min[2] = temp
+
+    print(color)
+    print(avarege_color_min)
+    print(avarege_color_max)
+
+    skinRegionFix = cv2.inRange(
+        image, avarege_color_min, avarege_color_max)
+
+    return skinRegionFix
+
+
 def generate_skin_texture2(face_texture_path, uv_face_texture):
 
     sourceImage = cv2.imread(face_texture_path, cv2.IMREAD_COLOR)
@@ -309,54 +365,39 @@ def generate_skin_texture2(face_texture_path, uv_face_texture):
         # Find region with skin tone in YCrCb image
         skinRegion = cv2.inRange(imageYCrCb, min_YCrCb, max_YCrCb)
 
+        cv2.imwrite('sample/debug-skin.png', skinRegion)
+
         skin_color_masked_ycrcb = cv2.bitwise_and(
             imageYCrCb, imageYCrCb, mask=skinRegion)
+        cv2.imwrite('sample/debug-skin2.png', skin_color_masked_ycrcb)
 
-        avarege_color = np.array(image_dominant_color(skin_color_masked_ycrcb))
+        avarege_colors = np.array(
+            image_dominant_color(skin_color_masked_ycrcb))
 
-        avarege_color_min = np.array(
-            avarege_color - avarege_color*0.08, np.uint8)
-        avarege_color_max = np.array(
-            avarege_color + avarege_color*0.08, np.uint8)
+        print(f"colors: {avarege_colors}")
 
-        if avarege_color_max[0] < avarege_color_min[0]:
-            temp = avarege_color_max[0]
-            avarege_color_max[0] = avarege_color_min[0]
-            avarege_color_min[0] = temp
+        final_mask = np.zeros((h, w), np.uint8)
 
-        if avarege_color_max[1] < avarege_color_min[1]:
-            temp = avarege_color_max[1]
-            avarege_color_max[1] = avarege_color_min[1]
-            avarege_color_min[1] = temp
+        for i in range(2):
 
-        if avarege_color_max[2] < avarege_color_min[2]:
-            temp = avarege_color_max[2]
-            avarege_color_max[2] = avarege_color_min[2]
-            avarege_color_min[2] = temp
+            current_mask = mask_by_color(imageYCrCb, avarege_colors[i])
 
-        print(avarege_color)
-        print(avarege_color_min)
-        print(avarege_color_max)
-
-        skinRegionFix = cv2.inRange(
-            imageYCrCb, avarege_color_min, avarege_color_max)
-
-        final_mask = skinRegionFix
-        for y in range(h):
-            for x in range(w):
-                if(skinRegion[y][x] > 0 and skinRegionFix[y][x] > 0):
-                    final_mask[y][x] = skinRegion[y][x]
-                else:
-                    final_mask[y][x] = 0
+            for y in range(h):
+                for x in range(w):
+                    if(skinRegion[y][x] > 0 and (final_mask[y][x] > 0 or current_mask[y][x] > 0)):
+                        final_mask[y][x] = skinRegion[y][x]
+                    else:
+                        final_mask[y][x] = 0
 
         skin_color_final = cv2.bitwise_and(
             sourceImage, sourceImage, mask=final_mask)
 
+        cv2.imwrite('sample/debug-median-skin.png', skin_color_final)
         cv2.imwrite('sample/skin-temp.png', reproduce_skin(
             skin_color_final, (w, h)))
 
         skin_reproduced = Image.open('sample/skin-temp.png')
-        skin_reproduced = skin_reproduced.filter(ImageFilter.GaussianBlur(12))
+        skin_reproduced = skin_reproduced.filter(ImageFilter.GaussianBlur(32))
 
         img_uv_face = uv_face_texture.copy()
         img_background = skin_reproduced.copy()
