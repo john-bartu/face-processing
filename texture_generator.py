@@ -36,36 +36,44 @@ def crop(img, startx, starty, cropx, cropy):
 
 
 def image_dominant_color(a):
-    a2D = a.reshape(-1, a.shape[-1])
-    a2D = np.delete(a2D, np.where(a2D == [0, 0, 0]), axis=0)
-    col_range = (256, 256, 256)
-    a1D = np.ravel_multi_index(a2D.T, col_range)
+    from sklearn.cluster import KMeans
 
-    pixels = np.float32(a.reshape(-1, 3))
+    def make_histogram(cluster):
+        """
+        Count the number of pixels in each cluster
+        :param: KMeans cluster
+        :return: numpy histogram
+        """
+        numLabels = np.arange(0, len(np.unique(cluster.labels_)) + 1)
+        hist, _ = np.histogram(cluster.labels_, bins=numLabels)
+        hist = hist.astype('float32')
+        hist /= hist.sum()
+        return hist
 
-    n_colors = 8
-    criteria = (cv2.TERM_CRITERIA_EPS + cv2.TERM_CRITERIA_MAX_ITER, 200, .1)
-    flags = cv2.KMEANS_RANDOM_CENTERS
+    # START HERE
+    img = a.copy()
+    height, width, _ = np.shape(img)
+    # reshape the image to be a simple list of RGB pixels
+    image = img.reshape((height * width, 3))
 
-    _, labels, palette = cv2.kmeans(
-        pixels, n_colors, None, criteria, 10, flags)
-    _, counts = np.unique(labels, return_counts=True)
+    # we'll pick the 5 most common colors
+    num_clusters = 6
+    clusters = KMeans(n_clusters=num_clusters)
+    clusters.fit(image)
 
-    dic = dict()
-    for i in range(len(palette)):
-        dic[counts[i]] = palette[i]
+    # count the dominant colors and put them in "buckets"
+    histogram = make_histogram(clusters)
+    # then sort them, most-common first
+    combined = zip(histogram, clusters.cluster_centers_)
+    combined = sorted(combined, key=lambda x: x[0], reverse=True)
 
-        np.sort(counts)
-    dominant = dic[counts[1]]
+    # finally, we'll output a graphic showing the colors in order
+    colors = []
+    for rows in combined:
+        colors.append(rows[1])
+        print(f'Color values: {rows[1]} - {rows[0]}%')
 
-    simple_array = []
-    for i in range(len(counts)):
-        color = dic[counts[i]]
-        if(color > 10).all():
-            simple_array.append(color)
-
-    # return np.unravel_index(np.bincount(a1D).argmax(), col_range)
-    return simple_array
+    return colors
 
 
 def average_colour(image):
@@ -89,9 +97,9 @@ def imageOpen(name):
 
 
 parser = argparse.ArgumentParser()
-parser.add_argument('--input_path', default='sample/sample2.png',
+parser.add_argument('--input_path', default='sample/sample7.png',
                     help="face face_image")
-parser.add_argument('--input_path_uv', default='sample/sample2-uv.png',
+parser.add_argument('--input_path_uv', default='sample/sample7-uv.png',
                     help="uv map created from face_image")
 parser.add_argument('--out_dir', default='out/',
                     help="output directory")
@@ -135,7 +143,7 @@ def convert_hsv_to_percent(color):
 def find_class(hsv):
     color_id = len(class_name)-1
     for i in range(len(class_name)-1):
-        if check_color(hsv, EyeColor[class_name[i]]) == True:
+        if check_color(hsv, EyeColor[class_name[i]]):
             color_id = i
 
     return color_id
@@ -393,8 +401,9 @@ def generate_skin_texture2(face_texture_path, uv_face_texture):
             sourceImage, sourceImage, mask=final_mask)
 
         cv2.imwrite('sample/debug-median-skin.png', skin_color_final)
-        cv2.imwrite('sample/skin-temp.png', reproduce_skin(
-            skin_color_final, (w, h)))
+
+        cv2.imwrite('sample/skin-temp.png',
+                    reproduce_skin(skin_color_final, (w, h)))
 
         skin_reproduced = Image.open('sample/skin-temp.png')
         skin_reproduced = skin_reproduced.filter(ImageFilter.GaussianBlur(32))

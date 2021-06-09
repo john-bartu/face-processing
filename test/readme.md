@@ -39,3 +39,10 @@
 ![](6/hair-final.png)
 ![](6/head-final.png)
 ![](6/head-final2.png)
+
+# example 7
+![](../sample/sample7.png)
+![](7/eye-final.png)
+![](7/hair-final.png)
+![](7/head-final.png)
+
